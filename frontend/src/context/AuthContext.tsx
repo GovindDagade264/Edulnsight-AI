@@ -89,9 +89,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseActive) {
       const { data: { subscription } } = supabaseAuth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_OUT') {
-          setStoredToken(null);
-          setUser(null);
-          setProfile(null);
+          // Do not wipe backend session on Supabase background sign-out events (e.g. unconfirmed email)
+          const token = getStoredToken();
+          if (!token) {
+            setUser(null);
+            setProfile(null);
+          }
         } else if (event === 'SIGNED_IN' && session) {
           const token = getStoredToken();
           if (!token) {

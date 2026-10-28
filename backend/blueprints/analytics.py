@@ -64,7 +64,7 @@ def generate_student_dashboard(conn, student_id, institution_id, is_parent_view=
         SELECT sp.*, u.full_name, u.email, u.phone, c.name as class_name, c.division, c.stream, i.name as institution_name
         FROM student_profiles sp
         JOIN users u ON sp.user_id = u.id
-        JOIN classes c ON sp.class_id = c.id
+        LEFT JOIN classes c ON sp.class_id = c.id
         JOIN institutions i ON sp.institution_id = i.id
         WHERE sp.id = ?
     ''', (student_id,)).fetchone()
