@@ -7,14 +7,19 @@ env/
 node_modules/
 frontend/node_modules/
 
+# Environment files
+.env
+.env.*
+*.env
+frontend/.env
+frontend/.env.local
+
 # Python cache
 __pycache__/
 backend/__pycache__/
 backend/blueprints/__pycache__/
 *.pyc
 
-# Frontend builds
-# Note: frontend/dist can be built on deployment or kept if needed
 # Logs & IDE
 *.log
 .vscode/
@@ -23,4 +28,3 @@ backend/blueprints/__pycache__/
 
 # Temporary files
 *.tmp
-
