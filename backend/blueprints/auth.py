@@ -1,3 +1,5 @@
+
+
 import jwt
 import datetime
 import uuid
@@ -200,6 +202,64 @@ def register():
         INSERT INTO users (id, institution_id, email, password_hash, full_name, role, is_active)
         VALUES (?, ?, ?, ?, ?, ?, 1)
     ''', (user_id, institution_id, email, pwd_hash, full_name, role))
+
+    # Automatically create the corresponding role profile so the new account is fully functional immediately
+    profile_dict = None
+    if role == 'student':
+        cls = conn.execute('SELECT id FROM classes WHERE institution_id = ? ORDER BY id ASC LIMIT 1', (institution_id,)).fetchone()
+        class_id = cls['id'] if cls else 'class_10a'
+        count_row = conn.execute('SELECT count(*) as count FROM student_profiles WHERE class_id = ?', (class_id,)).fetchone()
+        next_roll = (count_row['count'] if count_row else 0) + 101
+        roll_number = f"2024-X-{next_roll}"
+        admission_number = f"ADM-2024-{uuid.uuid4().hex[:4].upper()}"
+        sp_id = f"sp_{uuid.uuid4().hex[:8]}"
+        conn.execute('''
+            INSERT INTO student_profiles (id, institution_id, user_id, class_id, roll_number, admission_number)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (sp_id, institution_id, user_id, class_id, roll_number, admission_number))
+        profile_dict = {
+            'id': sp_id,
+            'institution_id': institution_id,
+            'user_id': user_id,
+            'class_id': class_id,
+            'roll_number': roll_number,
+            'admission_number': admission_number,
+            'profile_completion_status': True
+        }
+    elif role == 'teacher':
+        tp_id = f"tp_{uuid.uuid4().hex[:8]}"
+        emp_code = f"EMP-SXMA-{uuid.uuid4().hex[:3].upper()}"
+        conn.execute('''
+            INSERT INTO teacher_profiles (id, user_id, institution_id, employee_code, designation, qualification)
+            VALUES (?, ?, ?, ?, 'Instructional Faculty', 'M.Sc., B.Ed.')
+        ''', (tp_id, user_id, institution_id, emp_code))
+        profile_dict = {
+            'id': tp_id,
+            'institution_id': institution_id,
+            'user_id': user_id,
+            'employee_code': emp_code,
+            'designation': 'Instructional Faculty',
+            'qualification': 'M.Sc., B.Ed.'
+        }
+    elif role == 'parent':
+        pp_id = f"pp_{uuid.uuid4().hex[:8]}"
+        conn.execute('''
+            INSERT INTO parent_profiles (id, institution_id, user_id, relationship_type)
+            VALUES (?, ?, ?, 'Guardian')
+        ''', (pp_id, institution_id, user_id))
+        profile_dict = {
+            'id': pp_id,
+            'institution_id': institution_id,
+            'user_id': user_id,
+            'relationship_type': 'Guardian'
+        }
+    else: # admin
+        profile_dict = {
+            'id': f"ap_{uuid.uuid4().hex[:8]}",
+            'institution_id': institution_id,
+            'user_id': user_id
+        }
+
 
     # Automatically create the corresponding role profile so the new account is fully functional immediately
     profile_dict = None
