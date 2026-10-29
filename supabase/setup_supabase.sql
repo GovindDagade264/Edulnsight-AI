@@ -126,3 +126,4 @@ CREATE POLICY "Public select academic_years" ON public.academic_years FOR SELECT
 
 DROP POLICY IF EXISTS "Public select classes" ON public.classes;
 CREATE POLICY "Public select classes" ON public.classes FOR SELECT USING (true);
+
