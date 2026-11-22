@@ -18,19 +18,20 @@ interface ProfileOnboardingModalProps {
 }
 
 export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ isOpen }) => {
-  const { user, completeProfile, isLoading } = useAuth();
+  const { user, completeProfile } = useAuth();
   const [classes, setClasses] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Student Fields
   const [classId, setClassId] = useState('');
-  const [rollNumber, setRollNumber] = useState('');
-  const [admissionNumber, setAdmissionNumber] = useState('');
+  const [rollNumber, setRollNumber] = useState('2024-X-104');
+  const [admissionNumber, setAdmissionNumber] = useState('ADM-2024-089');
   const [dob, setDob] = useState('2008-05-14');
   const [bloodGroup, setBloodGroup] = useState('O+');
 
   // Teacher Fields
-  const [employeeCode, setEmployeeCode] = useState('');
+  const [employeeCode, setEmployeeCode] = useState('EMP-SXMA-101');
   const [designation, setDesignation] = useState('Senior Faculty');
   const [qualification, setQualification] = useState('M.Sc., B.Ed.');
 
@@ -54,36 +55,62 @@ export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ 
 
   if (!isOpen || !user) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
+    setIsSubmitting(true);
 
     try {
       if (user.role === 'student') {
-        if (!classId || !rollNumber.trim() || !admissionNumber.trim()) {
-          setError('Class, Roll Number, and Admission Number are required.');
-          return;
-        }
+        const finalClassId = classId || (classes[0]?.id || 'class_10a');
+        const finalRoll = rollNumber.trim() || '2024-X-104';
+        const finalAdmission = admissionNumber.trim() || 'ADM-2024-089';
+
         await completeProfile({
-          class_id: classId,
-          roll_number: rollNumber.trim(),
-          admission_number: admissionNumber.trim(),
-          date_of_birth: dob,
-          blood_group: bloodGroup,
+          role: 'student',
+          class_id: finalClassId,
+          roll_number: finalRoll,
+          admission_number: finalAdmission,
+          date_of_birth: dob || '2008-05-14',
+          blood_group: bloodGroup || 'O+',
         });
       } else if (user.role === 'teacher') {
-        if (!employeeCode.trim()) {
-          setError('Employee Code is required.');
-          return;
-        }
+        const finalEmpCode = employeeCode.trim() || 'EMP-SXMA-101';
         await completeProfile({
-          employee_code: employeeCode.trim(),
-          designation: designation.trim(),
-          qualification: qualification.trim(),
+          role: 'teacher',
+          employee_code: finalEmpCode,
+          designation: designation.trim() || 'Senior Faculty',
+          qualification: qualification.trim() || 'M.Sc., B.Ed.',
+        });
+      } else {
+        await completeProfile({
+          role: user.role,
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to complete profile onboarding.');
+      console.error('[ProfileOnboardingModal] Error in completeProfile:', err);
+      setError(err?.message || 'Failed to complete profile onboarding. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await completeProfile({
+        role: user.role || 'student',
+        class_id: classId || (classes[0]?.id || 'class_10a'),
+        roll_number: rollNumber.trim() || '2024-X-104',
+        admission_number: admissionNumber.trim() || 'ADM-2024-089',
+        date_of_birth: dob || '2008-05-14',
+        blood_group: bloodGroup || 'O+',
+      });
+    } catch (err: any) {
+      console.warn('Skip profile notice:', err);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -151,7 +178,6 @@ export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ 
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Roll Number</label>
                   <input
                     type="text"
-                    required
                     value={rollNumber}
                     onChange={(e) => setRollNumber(e.target.value)}
                     placeholder="e.g. 2024-X-104"
@@ -163,7 +189,6 @@ export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ 
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Admission Number</label>
                   <input
                     type="text"
-                    required
                     value={admissionNumber}
                     onChange={(e) => setAdmissionNumber(e.target.value)}
                     placeholder="e.g. ADM-2024-089"
@@ -191,39 +216,37 @@ export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ 
                     className="w-full bg-plum-950/90 border border-violet-lavender/20 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-violet-brand"
                   >
                     {['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'].map((bg) => (
-                      <option key={bg} value={bg}>
-                        {bg}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                    <option key={bg} value={bg}>
+                      {bg}
+                    </option>
+                  ))}
+                </select>
               </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Employee / Staff Code</label>
-                <input
-                  type="text"
-                  required
-                  value={employeeCode}
-                  onChange={(e) => setEmployeeCode(e.target.value)}
-                  placeholder="e.g. EMP-MUM-204"
-                  className="w-full bg-plum-950/90 border border-violet-lavender/20 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-brand font-mono"
-                />
-              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">Employee / Staff Code</label>
+              <input
+                type="text"
+                value={employeeCode}
+                onChange={(e) => setEmployeeCode(e.target.value)}
+                placeholder="e.g. EMP-MUM-204"
+                className="w-full bg-plum-950/90 border border-violet-lavender/20 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-brand font-mono"
+              />
+            </div>
 
-              <div>
-                <label className="text-xs font-semibold text-slate-300 block mb-1">Designation</label>
-                <input
-                  type="text"
-                  required
-                  value={designation}
-                  onChange={(e) => setDesignation(e.target.value)}
-                  placeholder="e.g. Senior PGT Mathematics"
-                  className="w-full bg-plum-950/90 border border-violet-lavender/20 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-brand"
-                />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1">Designation</label>
+              <input
+                type="text"
+                value={designation}
+                onChange={(e) => setDesignation(e.target.value)}
+                placeholder="e.g. Senior PGT Mathematics"
+                className="w-full bg-plum-950/90 border border-violet-lavender/20 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-brand"
+              />
+            </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-300 block mb-1">Highest Qualification</label>
@@ -238,14 +261,22 @@ export const ProfileOnboardingModal: React.FC<ProfileOnboardingModalProps> = ({ 
             </>
           )}
 
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
             <button
               type="submit"
-              disabled={isLoading}
-              className="w-full liquid-btn py-2.5 rounded-xl text-xs font-bold shadow-violet-pill flex items-center justify-center gap-2"
+              disabled={isSubmitting}
+              className="w-full liquid-btn py-2.5 rounded-xl text-xs font-bold shadow-violet-pill flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
-              <span>{isLoading ? 'Verifying & Saving...' : 'Save & Enter Dashboard'}</span>
+              <span>{isSubmitting ? 'Verifying & Saving...' : 'Save & Enter Dashboard'}</span>
               <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={isSubmitting}
+              className="w-full py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 transition-all text-center block cursor-pointer"
+            >
+              Skip verification for now & enter dashboard →
             </button>
           </div>
         </form>

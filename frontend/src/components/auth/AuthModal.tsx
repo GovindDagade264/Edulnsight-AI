@@ -27,26 +27,71 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<UserRole>('student');
   const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
+  const isBusy = isSubmitting;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[AuthModal] Form submission received for mode:', mode);
     setError(null);
+
+    // Explicit validation check
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      console.warn('[AuthModal] Validation failed: missing email');
+      setError('Please enter your institutional email address.');
+      return;
+    }
+
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      console.warn('[AuthModal] Validation failed: invalid email format');
+      setError('Please enter a valid institutional email address (e.g. name@institution.edu.in).');
+      return;
+    }
+
+    if (!password) {
+      console.warn('[AuthModal] Validation failed: missing password');
+      setError('Please enter your account password.');
+      return;
+    }
+
+    if (password.length < 6) {
+      console.warn('[AuthModal] Validation failed: password too short');
+      setError('Password must be at least 6 characters.');
+      return;
+    }
+
+    if (mode === 'register' && !fullName.trim()) {
+      console.warn('[AuthModal] Validation failed: missing full name');
+      setError('Please enter your legal full name.');
+      return;
+    }
+
+    console.log('[AuthModal] Validation completed successfully for email:', cleanEmail);
+    console.log('[AuthModal] Authentication function invoked:', mode === 'signin' ? 'login()' : 'register()');
+
+    setIsSubmitting(true);
     try {
       if (mode === 'signin') {
-        await login(email, password);
+        await login(cleanEmail, password);
       } else {
-        await register(email, password, fullName, role);
+        await register(cleanEmail, password, fullName.trim(), role);
       }
+      console.log('[AuthModal] Authentication function returned successfully, closing modal');
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please verify your details.');
+      console.error('[AuthModal] Error returned during authentication:', err?.message || err);
+      setError(err?.message || 'Authentication failed. Please verify your details.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-plum-950/80 backdrop-blur-md animate-fadeIn">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-plum-950/80 backdrop-blur-md animate-fadeIn">
       <div className="glass-panel-elevated rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-violet-lavender/30 shadow-2xl relative bg-plum-900/95 max-h-[92vh] overflow-y-auto">
         {/* Close Button */}
         <button
@@ -109,7 +154,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         )}
 
         {/* Credentials Form */}
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-left">
+        <form noValidate onSubmit={handleSubmit} className="space-y-3.5 text-left">
           {mode === 'register' && (
             <>
               <div>
@@ -190,10 +235,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
           <button
             type="submit"
-            disabled={isLoading}
-            className="w-full liquid-btn py-2.5 rounded-xl text-xs font-bold shadow-violet-pill flex items-center justify-center gap-2 mt-4 disabled:opacity-50"
+            onClick={() => {
+              console.log('[AuthModal] Button click received on submit button. Current mode:', mode, 'isBusy:', isBusy);
+            }}
+            disabled={isBusy}
+            className="w-full liquid-btn py-2.5 rounded-xl text-xs font-bold shadow-violet-pill flex items-center justify-center gap-2 mt-4 disabled:opacity-50 transition-all cursor-pointer"
           >
-            {isLoading ? (
+            {isBusy ? (
               <span>Authenticating...</span>
             ) : mode === 'signin' ? (
               <>

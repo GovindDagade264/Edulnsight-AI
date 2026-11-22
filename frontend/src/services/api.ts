@@ -56,7 +56,12 @@ export const api = {
         body: JSON.stringify(payload),
       }),
     completeProfile: (payload: any) =>
-      request<{ success: boolean; user: any; profile: any; message: string }>('/auth/complete-profile', {
+      request<{ success: boolean; token?: string; user: any; profile: any; message: string }>('/auth/complete-profile', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    syncSupabaseSession: (payload: { supabase_uid: string; email: string; full_name: string; role: string; institution_id?: string }) =>
+      request<{ token: string; user: any; profile: any; message: string }>('/auth/supabase-session', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),

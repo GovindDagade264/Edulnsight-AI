@@ -1,3 +1,8 @@
+# Build outputs
+dist/
+frontend/dist/
+build/
+
 # Virtual Environment
 venv/
 .venv/
