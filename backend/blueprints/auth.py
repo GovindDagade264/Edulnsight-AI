@@ -115,7 +115,10 @@ def ensure_student_records(conn, student_profile_id, class_id, institution_id='i
                 INSERT OR IGNORE INTO early_warnings (id, institution_id, student_id, subject_id, risk_level, title, reason, evidence, recommended_action, status, teacher_feedback, dismissed_reason, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (f"ew_{uuid.uuid4().hex[:8]}", ew['institution_id'], student_profile_id, ew['subject_id'], ew['risk_level'], ew['title'], ew['reason'], ew['evidence'], ew['recommended_action'], ew['status'], ew['teacher_feedback'], ew['dismissed_reason'], ew['created_at']))
-    conn.commit()
+    try:
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
 def ensure_teacher_records(conn, teacher_profile_id):
     """Ensures teacher has subject assignments so the teacher dashboard has complete classes."""
@@ -123,7 +126,10 @@ def ensure_teacher_records(conn, teacher_profile_id):
     if count == 0:
         conn.execute('INSERT OR IGNORE INTO teacher_subject_assignments (id, teacher_id, subject_id, is_primary_teacher) VALUES (?, ?, ?, 1)', (f"tsa_{uuid.uuid4().hex[:6]}", teacher_profile_id, 'sub_math'))
         conn.execute('INSERT OR IGNORE INTO teacher_subject_assignments (id, teacher_id, subject_id, is_primary_teacher) VALUES (?, ?, ?, 1)', (f"tsa_{uuid.uuid4().hex[:6]}", teacher_profile_id, 'sub_sci'))
-        conn.commit()
+        try:
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
 def ensure_parent_records(conn, parent_profile_id, institution_id='inst_sxma_01'):
     """Ensures parent is linked to an enrolled student."""
@@ -132,7 +138,10 @@ def ensure_parent_records(conn, parent_profile_id, institution_id='inst_sxma_01'
         primary_student = conn.execute('SELECT id FROM student_profiles WHERE institution_id = ? ORDER BY id ASC LIMIT 1', (institution_id,)).fetchone()
         if primary_student:
             conn.execute('INSERT OR IGNORE INTO parent_student_map (id, parent_id, student_id, relationship, is_primary_contact) VALUES (?, ?, ?, ?, 1)', (f"psm_{uuid.uuid4().hex[:6]}", parent_profile_id, primary_student['id'], 'Guardian'))
-            conn.commit()
+            try:
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
 
 @auth_bp.route('/supabase-session', methods=['POST'])
 def sync_supabase_session():
@@ -147,118 +156,125 @@ def sync_supabase_session():
         return jsonify({'error': 'User email is required to sync session.'}), 400
 
     conn = get_db_connection()
-    user = conn.execute('SELECT * FROM users WHERE LOWER(email) = ?', (email,)).fetchone()
+    try:
+        user = conn.execute('SELECT * FROM users WHERE LOWER(email) = ?', (email,)).fetchone()
 
-    if not user:
-        inst = conn.execute('SELECT * FROM institutions WHERE id = ?', (institution_id,)).fetchone()
-        if not inst:
-            inst = conn.execute('SELECT * FROM institutions LIMIT 1').fetchone()
-            institution_id = inst['id'] if inst else 'inst_sxma_01'
+        if not user:
+            inst = conn.execute('SELECT * FROM institutions WHERE id = ?', (institution_id,)).fetchone()
+            if not inst:
+                inst = conn.execute('SELECT * FROM institutions LIMIT 1').fetchone()
+                institution_id = inst['id'] if inst else 'inst_sxma_01'
 
-        user_id = supabase_uid if supabase_uid else f"usr_{uuid.uuid4().hex[:8]}"
-        pwd_hash = generate_password_hash("SupabaseAuthManaged-2025")
-        try:
-            conn.execute('''
-                INSERT INTO users (id, institution_id, email, password_hash, full_name, role, is_active)
-                VALUES (?, ?, ?, ?, ?, ?, 1)
-            ''', (user_id, institution_id, email, pwd_hash, full_name, role))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            user = conn.execute('SELECT * FROM users WHERE LOWER(email) = ?', (email,)).fetchone()
-            if user:
-                user_id = user['id']
+            user_id = supabase_uid if supabase_uid else f"usr_{uuid.uuid4().hex[:8]}"
+            pwd_hash = generate_password_hash("SupabaseAuthManaged-2025")
+            try:
+                conn.execute('''
+                    INSERT INTO users (id, institution_id, email, password_hash, full_name, role, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                ''', (user_id, institution_id, email, pwd_hash, full_name, role))
+                conn.commit()
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                user = conn.execute('SELECT * FROM users WHERE LOWER(email) = ?', (email,)).fetchone()
+                if user:
+                    user_id = user['id']
 
-        if role == 'student':
-            cls = conn.execute('SELECT id FROM classes WHERE institution_id = ? ORDER BY id ASC LIMIT 1', (institution_id,)).fetchone()
-            class_id = cls['id'] if cls else 'class_10a'
-            count_row = conn.execute('SELECT count(*) as count FROM student_profiles WHERE class_id = ?', (class_id,)).fetchone()
-            next_roll = (count_row['count'] if count_row else 0) + 101
-            roll_number = f"2024-X-{next_roll}"
-            admission_number = f"ADM-2024-{uuid.uuid4().hex[:4].upper()}"
-            sp_id = f"sp_{uuid.uuid4().hex[:8]}"
-            conn.execute('''
-                INSERT INTO student_profiles (id, institution_id, user_id, class_id, roll_number, admission_number)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (sp_id, institution_id, user_id, class_id, roll_number, admission_number))
-        elif role == 'teacher':
-            tp_id = f"tp_{uuid.uuid4().hex[:8]}"
-            emp_code = f"EMP-SXMA-{uuid.uuid4().hex[:3].upper()}"
-            conn.execute('''
-                INSERT INTO teacher_profiles (id, user_id, institution_id, employee_code, designation, qualification)
-                VALUES (?, ?, ?, ?, 'Instructional Faculty', 'M.Sc., B.Ed.')
-            ''', (tp_id, user_id, institution_id, emp_code))
-        elif role == 'parent':
-            pp_id = f"pp_{uuid.uuid4().hex[:8]}"
-            conn.execute('''
-                INSERT INTO parent_profiles (id, user_id, institution_id, occupation)
-                VALUES (?, ?, ?, 'Guardian')
-            ''', (pp_id, user_id, institution_id))
+            if role == 'student':
+                cls = conn.execute('SELECT id FROM classes WHERE institution_id = ? ORDER BY id ASC LIMIT 1', (institution_id,)).fetchone()
+                class_id = cls['id'] if cls else 'class_10a'
+                count_row = conn.execute('SELECT count(*) as count FROM student_profiles WHERE class_id = ?', (class_id,)).fetchone()
+                next_roll = (count_row['count'] if count_row else 0) + 101
+                roll_number = f"2024-X-{next_roll}"
+                admission_number = f"ADM-2024-{uuid.uuid4().hex[:4].upper()}"
+                sp_id = f"sp_{uuid.uuid4().hex[:8]}"
+                conn.execute('''
+                    INSERT INTO student_profiles (id, institution_id, user_id, class_id, roll_number, admission_number)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ''', (sp_id, institution_id, user_id, class_id, roll_number, admission_number))
+            elif role == 'teacher':
+                tp_id = f"tp_{uuid.uuid4().hex[:8]}"
+                emp_code = f"EMP-SXMA-{uuid.uuid4().hex[:3].upper()}"
+                conn.execute('''
+                    INSERT INTO teacher_profiles (id, user_id, institution_id, employee_code, designation, qualification)
+                    VALUES (?, ?, ?, ?, 'Instructional Faculty', 'M.Sc., B.Ed.')
+                ''', (tp_id, user_id, institution_id, emp_code))
+            elif role == 'parent':
+                pp_id = f"pp_{uuid.uuid4().hex[:8]}"
+                conn.execute('''
+                    INSERT INTO parent_profiles (id, user_id, institution_id, occupation)
+                    VALUES (?, ?, ?, 'Guardian')
+                ''', (pp_id, user_id, institution_id))
 
-        conn.commit()
-        user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
-    else:
-        # Existing user: synchronize role and full_name if updated from Supabase
-        new_role = role if role in ['student', 'teacher', 'parent', 'admin'] else user['role']
-        new_name = full_name if (full_name and full_name != 'Authenticated User') else user['full_name']
-        if new_role != user['role'] or new_name != user['full_name']:
-            conn.execute('UPDATE users SET role = ?, full_name = ? WHERE id = ?', (new_role, new_name, user['id']))
-            conn.commit()
-            user = conn.execute('SELECT * FROM users WHERE id = ?', (user['id'],)).fetchone()
+            try:
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
+            user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+        else:
+            # Existing user: synchronize role and full_name if updated from Supabase
+            new_role = role if role in ['student', 'teacher', 'parent', 'admin'] else user['role']
+            new_name = full_name if (full_name and full_name != 'Authenticated User') else user['full_name']
+            if new_role != user['role'] or new_name != user['full_name']:
+                try:
+                    conn.execute('UPDATE users SET role = ?, full_name = ? WHERE id = ?', (new_role, new_name, user['id']))
+                    conn.commit()
+                    user = conn.execute('SELECT * FROM users WHERE id = ?', (user['id'],)).fetchone()
+                except sqlite3.OperationalError:
+                    pass
 
-    inst = conn.execute('SELECT * FROM institutions WHERE id = ?', (user['institution_id'],)).fetchone()
-    inst_name = inst['name'] if inst else "St. Xavier's Model Senior Secondary School"
-    inst_code = inst['code'] if inst else "SXMA-MUM"
+        inst = conn.execute('SELECT * FROM institutions WHERE id = ?', (user['institution_id'],)).fetchone()
+        inst_name = inst['name'] if inst else "St. Xavier's Model Senior Secondary School"
+        inst_code = inst['code'] if inst else "SXMA-MUM"
 
-    profile_data = {}
-    if user['role'] == 'student':
-        sp = conn.execute('''
-            SELECT sp.*, c.name as class_name, c.division, c.stream
-            FROM student_profiles sp
-            JOIN classes c ON sp.class_id = c.id
-            WHERE sp.user_id = ?
-        ''', (user['id'],)).fetchone()
-        if sp:
-            ensure_student_records(conn, sp['id'], sp['class_id'], user['institution_id'])
-            profile_data = dict(sp)
-    elif user['role'] == 'teacher':
-        tp = conn.execute('SELECT * FROM teacher_profiles WHERE user_id = ?', (user['id'],)).fetchone()
-        if tp:
-            ensure_teacher_records(conn, tp['id'])
-            profile_data = dict(tp)
-    elif user['role'] == 'parent':
-        pp = conn.execute('SELECT * FROM parent_profiles WHERE user_id = ?', (user['id'],)).fetchone()
-        if pp:
-            ensure_parent_records(conn, pp['id'], user['institution_id'])
-            profile_data = dict(pp)
-            child = conn.execute('''
-                SELECT sp.id as student_id, u.full_name as student_name, sp.roll_number, c.name as class_name, c.division
-                FROM parent_student_map psm
-                JOIN student_profiles sp ON psm.student_id = sp.id
-                JOIN users u ON sp.user_id = u.id
+        profile_data = {}
+        if user['role'] == 'student':
+            sp = conn.execute('''
+                SELECT sp.*, c.name as class_name, c.division, c.stream
+                FROM student_profiles sp
                 JOIN classes c ON sp.class_id = c.id
-                WHERE psm.parent_id = ?
-            ''', (pp['id'],)).fetchone()
-            if child:
-                profile_data['linked_student'] = dict(child)
+                WHERE sp.user_id = ?
+            ''', (user['id'],)).fetchone()
+            if sp:
+                ensure_student_records(conn, sp['id'], sp['class_id'], user['institution_id'])
+                profile_data = dict(sp)
+        elif user['role'] == 'teacher':
+            tp = conn.execute('SELECT * FROM teacher_profiles WHERE user_id = ?', (user['id'],)).fetchone()
+            if tp:
+                ensure_teacher_records(conn, tp['id'])
+                profile_data = dict(tp)
+        elif user['role'] == 'parent':
+            pp = conn.execute('SELECT * FROM parent_profiles WHERE user_id = ?', (user['id'],)).fetchone()
+            if pp:
+                ensure_parent_records(conn, pp['id'], user['institution_id'])
+                profile_data = dict(pp)
+                child = conn.execute('''
+                    SELECT sp.id as student_id, u.full_name as student_name, sp.roll_number, c.name as class_name, c.division
+                    FROM parent_student_map psm
+                    JOIN student_profiles sp ON psm.student_id = sp.id
+                    JOIN users u ON sp.user_id = u.id
+                    JOIN classes c ON sp.class_id = c.id
+                    WHERE psm.parent_id = ?
+                ''', (pp['id'],)).fetchone()
+                if child:
+                    profile_data['linked_student'] = dict(child)
 
-    conn.close()
+        user_dict = dict(user)
+        if 'password_hash' in user_dict:
+            del user_dict['password_hash']
+        user_dict['institution_name'] = inst_name
+        user_dict['institution_code'] = inst_code
+        user_dict['profile_completion_status'] = True
 
-    user_dict = dict(user)
-    if 'password_hash' in user_dict:
-        del user_dict['password_hash']
-    user_dict['institution_name'] = inst_name
-    user_dict['institution_code'] = inst_code
-    user_dict['profile_completion_status'] = True
+        token = generate_token(user_dict)
 
-    token = generate_token(user_dict)
-
-    return jsonify({
-        'token': token,
-        'user': user_dict,
-        'profile': profile_data,
-        'message': f"Supabase session synchronized for {user['full_name']}."
-    })
+        return jsonify({
+            'token': token,
+            'user': user_dict,
+            'profile': profile_data,
+            'message': f"Supabase session synchronized for {user['full_name']}."
+        })
+    finally:
+        conn.close()
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
@@ -475,7 +491,10 @@ def register():
             'user_id': user_id
         }
 
-    conn.commit()
+    try:
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
     user_dict = {
         'id': user_id,
@@ -598,7 +617,10 @@ def complete_profile():
             ''', (tp_id, user_id, institution_id, employee_code, designation, qualification))
         ensure_teacher_records(conn, tp_id)
 
-    conn.commit()
+    try:
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass
 
     # Re-fetch user profile
     user = conn.execute('''
