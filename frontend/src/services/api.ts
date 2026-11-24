@@ -1,4 +1,15 @@
-const rawBase = (import.meta.env.VITE_API_URL as string | undefined) || '';
+let rawBase = ((import.meta.env.VITE_API_URL as string | undefined) || '').trim();
+
+// Auto-correct outdated or mistyped backend URL
+if (rawBase && rawBase.includes('eduinsight-backend.onrender.com') && !rawBase.includes('-ui4u')) {
+  rawBase = rawBase.replace('eduinsight-backend.onrender.com', 'eduinsight-backend-ui4u.onrender.com');
+}
+
+// In production (Netlify or remote host), if no VITE_API_URL is configured, default to the live Render backend
+if (!rawBase && typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+  rawBase = 'https://eduinsight-backend-ui4u.onrender.com';
+}
+
 const API_BASE = rawBase ? (rawBase.endsWith('/api') ? rawBase : `${rawBase.replace(/\/$/, '')}/api`) : '/api';
 
 export function getStoredToken(): string | null {

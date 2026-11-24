@@ -18,13 +18,14 @@ def preview_import():
         return jsonify({'error': 'No data rows provided for import.'}), 400
 
     conn = get_db_connection()
+    user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
     asm = conn.execute('''
         SELECT a.*, s.name as subject_name, c.id as class_id, c.name as class_name
         FROM assessments a
         JOIN subjects s ON a.subject_id = s.id
         JOIN classes c ON a.class_id = c.id
         WHERE a.id = ? AND a.institution_id = ?
-    ''', (assessment_id, g.current_user['institution_id'])).fetchone()
+    ''', (assessment_id, user_inst)).fetchone()
 
     if not asm:
         conn.close()
@@ -136,6 +137,10 @@ def commit_import():
     committed_count = 0
 
     try:
+        user_name = g.current_user.get('full_name') or 'Faculty Member'
+        user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
+        user_uid = g.current_user.get('user_id') or 'usr_system'
+
         for r in valid_rows:
             if not r.get('is_valid') or not r.get('student_id'):
                 continue
@@ -151,12 +156,12 @@ def commit_import():
                     UPDATE marks_records
                     SET marks_obtained = ?, status = ?, remarks = ?, recorded_by = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
-                ''', (marks, status, remarks, g.current_user['full_name'], existing['id']))
+                ''', (marks, status, remarks, user_name, existing['id']))
             else:
                 conn.execute('''
                     INSERT INTO marks_records (id, assessment_id, student_id, marks_obtained, status, remarks, recorded_by)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (f"mr_imp_{uuid.uuid4().hex[:8]}", assessment_id, sid, marks, status, remarks, g.current_user['full_name']))
+                ''', (f"mr_imp_{uuid.uuid4().hex[:8]}", assessment_id, sid, marks, status, remarks, user_name))
             committed_count += 1
 
         # Audit log entry
@@ -165,8 +170,8 @@ def commit_import():
             VALUES (?, ?, ?, 'CSV_IMPORT_COMMITTED', 'assessment', ?, ?)
         ''', (
             f"al_imp_{uuid.uuid4().hex[:8]}",
-            g.current_user['institution_id'],
-            g.current_user['user_id'],
+            user_inst,
+            user_uid,
             assessment_id,
             f"Successfully imported verified marks for {committed_count} students via batch upload."
         ))

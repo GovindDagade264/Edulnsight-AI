@@ -618,7 +618,7 @@ def generate_admin_dashboard(conn, institution_id):
 @analytics_bp.route('/early-warnings', methods=['GET'])
 @require_auth()
 def get_early_warnings():
-    institution_id = g.current_user['institution_id']
+    institution_id = g.current_user.get('institution_id') or 'inst_sxma_01'
     conn = get_db_connection()
     warnings = conn.execute('''
         SELECT ew.*, u.full_name as student_name, sp.roll_number, s.name as subject_name
@@ -664,13 +664,15 @@ def handle_warning_action():
     ''', (new_status, feedback, dismissed_reason if action == 'DISMISS' else None, warning_id))
 
     # Log to audit log
+    user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
+    user_uid = g.current_user.get('user_id') or 'usr_system'
     conn.execute('''
         INSERT INTO audit_logs (id, institution_id, user_id, action, entity_type, entity_id, details)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', (
         f"al_warn_{uuid.uuid4().hex[:10]}",
-        g.current_user['institution_id'],
-        g.current_user['user_id'],
+        user_inst,
+        user_uid,
         f"EARLY_WARNING_{action}",
         "early_warning",
         warning_id,

@@ -7,8 +7,8 @@ reports_bp = Blueprint('reports', __name__, url_prefix='/api/reports')
 @reports_bp.route('/student/<student_id>', methods=['GET'])
 @require_auth()
 def get_student_report_data(student_id):
-    role = g.current_user['role']
-    user_id = g.current_user['user_id']
+    role = g.current_user.get('role', 'student')
+    user_id = g.current_user.get('user_id') or 'usr_system'
     conn = get_db_connection()
 
     # Enforce permission check: student can only get their own, parent only linked child, teacher/admin within institution

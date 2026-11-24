@@ -10,9 +10,9 @@ VALID_STATUSES = ['Open', 'In Progress', 'Awaiting Student', 'Resolved', 'Closed
 @tickets_bp.route('', methods=['GET'])
 @require_auth()
 def list_tickets():
-    role = g.current_user['role']
-    user_id = g.current_user['user_id']
-    institution_id = g.current_user['institution_id']
+    role = g.current_user.get('role', 'student')
+    user_id = g.current_user.get('user_id') or 'usr_system'
+    institution_id = g.current_user.get('institution_id') or 'inst_sxma_01'
     conn = get_db_connection()
 
     if role == 'student':
@@ -85,9 +85,9 @@ def list_tickets():
 @tickets_bp.route('/<ticket_id>', methods=['GET'])
 @require_auth()
 def get_ticket_details(ticket_id):
-    institution_id = g.current_user['institution_id']
-    user_id = g.current_user['user_id']
-    role = g.current_user['role']
+    institution_id = g.current_user.get('institution_id') or 'inst_sxma_01'
+    user_id = g.current_user.get('user_id') or 'usr_system'
+    role = g.current_user.get('role', 'student')
 
     conn = get_db_connection()
     ticket = conn.execute('''
@@ -135,28 +135,31 @@ def create_ticket():
     if not title or not description:
         return jsonify({'error': 'Title and description are required.'}), 400
 
+    user_uid = g.current_user.get('user_id') or 'usr_system'
+    user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
+
     conn = get_db_connection()
-    sp = conn.execute('SELECT id FROM student_profiles WHERE user_id = ?', (g.current_user['user_id'],)).fetchone()
+    sp = conn.execute('SELECT id FROM student_profiles WHERE user_id = ?', (user_uid,)).fetchone()
     if not sp:
         conn.close()
         return jsonify({'error': 'Student profile not found.'}), 404
 
     if not teacher_id:
         # Default to primary teacher
-        default_tp = conn.execute('SELECT id FROM teacher_profiles WHERE institution_id = ? LIMIT 1', (g.current_user['institution_id'],)).fetchone()
+        default_tp = conn.execute('SELECT id FROM teacher_profiles WHERE institution_id = ? LIMIT 1', (user_inst,)).fetchone()
         teacher_id = default_tp['id'] if default_tp else 'tp_priya'
 
     ticket_id = f"tick_{uuid.uuid4().hex[:8]}"
     conn.execute('''
         INSERT INTO academic_tickets (id, institution_id, student_id, teacher_id, subject_id, title, description, category, priority, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Open')
-    ''', (ticket_id, g.current_user['institution_id'], sp['id'], teacher_id, subject_id, title, description, category, priority))
+    ''', (ticket_id, user_inst, sp['id'], teacher_id, subject_id, title, description, category, priority))
 
     # Add initial message
     conn.execute('''
         INSERT INTO ticket_messages (id, ticket_id, sender_user_id, message)
         VALUES (?, ?, ?, ?)
-    ''', (f"tm_{uuid.uuid4().hex[:8]}", ticket_id, g.current_user['user_id'], description))
+    ''', (f"tm_{uuid.uuid4().hex[:8]}", ticket_id, user_uid, description))
 
     conn.commit()
     conn.close()
@@ -186,15 +189,20 @@ def reply_to_ticket(ticket_id):
         return jsonify({'error': 'Ticket not found'}), 404
 
     msg_id = f"tm_{uuid.uuid4().hex[:8]}"
+    user_uid = g.current_user.get('user_id') or 'usr_system'
+    user_role = g.current_user.get('role', 'student')
+    user_name = g.current_user.get('full_name') or 'User'
+    user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
+
     conn.execute('''
         INSERT INTO ticket_messages (id, ticket_id, sender_user_id, message, attachment_name, attachment_url)
         VALUES (?, ?, ?, ?, ?, ?)
-    ''', (msg_id, ticket_id, g.current_user['user_id'], message, attachment_name, attachment_url))
+    ''', (msg_id, ticket_id, user_uid, message, attachment_name, attachment_url))
 
     # Auto transition: If teacher replies, transition from Open -> In Progress or Awaiting Student
-    if g.current_user['role'] == 'teacher' and t['status'] == 'Open':
+    if user_role == 'teacher' and t['status'] == 'Open':
         conn.execute('UPDATE academic_tickets SET status = "In Progress", updated_at = CURRENT_TIMESTAMP WHERE id = ?', (ticket_id,))
-    elif g.current_user['role'] == 'student' and t['status'] == 'Awaiting Student':
+    elif user_role == 'student' and t['status'] == 'Awaiting Student':
         conn.execute('UPDATE academic_tickets SET status = "In Progress", updated_at = CURRENT_TIMESTAMP WHERE id = ?', (ticket_id,))
     else:
         conn.execute('UPDATE academic_tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', (ticket_id,))
@@ -218,12 +226,16 @@ def update_ticket_status(ticket_id):
     if new_status not in VALID_STATUSES:
         return jsonify({'error': f"Invalid status. Must be one of: {', '.join(VALID_STATUSES)}"}), 400
 
+    user_uid = g.current_user.get('user_id') or 'usr_system'
+    user_inst = g.current_user.get('institution_id') or 'inst_sxma_01'
+    user_name = g.current_user.get('full_name') or 'Faculty'
+
     conn = get_db_connection()
     conn.execute('''
         UPDATE academic_tickets
         SET status = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND institution_id = ?
-    ''', (new_status, ticket_id, g.current_user['institution_id']))
+    ''', (new_status, ticket_id, user_inst))
 
     # System message in thread
     conn.execute('''
@@ -232,8 +244,8 @@ def update_ticket_status(ticket_id):
     ''', (
         f"tm_sys_{uuid.uuid4().hex[:8]}",
         ticket_id,
-        g.current_user['user_id'],
-        f"[SYSTEM UPDATE]: Ticket status changed to '{new_status}' by {g.current_user['full_name']}. {f'Note: {reason}' if reason else ''}"
+        user_uid,
+        f"[SYSTEM UPDATE]: Ticket status changed to '{new_status}' by {user_name}. {f'Note: {reason}' if reason else ''}"
     ))
 
     conn.commit()

@@ -16,8 +16,19 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = 'eduinsight-ai-production-session-key-2025'
 
-    # Enable CORS for frontend
-    CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
+    # Enable CORS for frontend (supporting Netlify and localhost)
+    CORS(app, resources={r"/api/*": {
+        "origins": [
+            "https://edulnsight-ai.netlify.app",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "*"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "Accept"]
+    }})
 
     # Initialize Database on boot if needed
     init_db()

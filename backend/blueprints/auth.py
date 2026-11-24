@@ -344,15 +344,16 @@ def login():
 @auth_bp.route('/me', methods=['GET'])
 @require_auth()
 def get_current_user():
-    user_id = g.current_user['user_id']
+    user_id = g.current_user.get('user_id') or 'usr_system'
+    email = (g.current_user.get('email') or '').strip().lower()
     conn = get_db_connection()
     user = conn.execute('''
         SELECT u.id, u.institution_id, u.email, u.full_name, u.role, u.phone, u.avatar_url,
                i.name as institution_name, i.code as institution_code, i.type as institution_type, i.board_university
         FROM users u
         JOIN institutions i ON u.institution_id = i.id
-        WHERE u.id = ?
-    ''', (user_id,)).fetchone()
+        WHERE u.id = ? OR LOWER(u.email) = ?
+    ''', (user_id, email)).fetchone()
 
     if not user:
         conn.close()
@@ -520,13 +521,13 @@ def register():
 @auth_bp.route('/complete-profile', methods=['POST'])
 @require_auth()
 def complete_profile():
-    user_id = g.current_user['user_id']
+    user_id = g.current_user.get('user_id') or 'usr_system'
     email = (g.current_user.get('email') or '').strip().lower()
     data = request.get_json() or {}
     
     # Allow overriding role from submitted onboarding payload if specified
     requested_role = data.get('role')
-    role = requested_role if requested_role in ['student', 'teacher', 'parent', 'admin'] else g.current_user['role']
+    role = requested_role if requested_role in ['student', 'teacher', 'parent', 'admin'] else g.current_user.get('role', 'student')
     institution_id = g.current_user.get('institution_id') or 'inst_sxma_01'
 
     conn = get_db_connection()
